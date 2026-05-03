@@ -1,4 +1,4 @@
-import React, { Suspense, useRef } from 'react';
+import { Suspense, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useGLTF, Stage, Float, Center } from '@react-three/drei';
 
@@ -6,7 +6,7 @@ function Model({ url }) {
   const { scene } = useGLTF(url);
   const modelRef = useRef();
 
-  useFrame((state) => {
+  useFrame(() => {
     if (modelRef.current) {
       modelRef.current.rotation.y += 0.01;
     }

@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Float } from '@react-three/drei';
 import * as THREE from 'three';
@@ -7,7 +7,7 @@ import * as THREE from 'three';
 function SceneCleanup() {
   const { gl, scene } = useThree();
   useEffect(() => {
-    return () => { try { gl.dispose(); scene.clear(); } catch(e){} };
+    return () => { try { gl.dispose(); scene.clear(); } catch { /* cleanup error ignored */ } };
   }, [gl, scene]);
   return null;
 }

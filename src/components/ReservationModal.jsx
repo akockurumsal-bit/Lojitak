@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  X, Truck, MapPin, Clock, Package, User, Building2,
-  Weight, CheckCircle2, Zap, ArrowRight, AlertTriangle, Hash,
+  X, Truck, Package, User, Building2,
+  Weight, CheckCircle2, ArrowRight, AlertTriangle,
   ShieldCheck, CreditCard
 } from 'lucide-react';
 import { supabase } from '../supabase';
 
-const ReservationModal = ({ truck, origin, destination, userProfile, onClose, showToast, setScreen }) => {
+const ReservationModal = ({ user, truck, origin, destination, userProfile, onClose, showToast, setScreen }) => {
   const freeKg = truck.total_capacity - truck.current_occupancy;
   const freePct = Math.round((freeKg / truck.total_capacity) * 100);
 
@@ -32,6 +32,16 @@ const ReservationModal = ({ truck, origin, destination, userProfile, onClose, sh
     setLoading(true);
     
     try {
+      // 0. Bakiye Kontrolü (Önceden Yapılmalı)
+      const amountValue = truck.base_price;
+      const currentSavings = userProfile?.total_savings || 0;
+
+      if (currentSavings < amountValue) {
+        showToast?.(`Yetersiz bakiye! Bu işlem için ₺${amountValue.toLocaleString()} gereklidir.`, 'error');
+        setLoading(false);
+        return;
+      }
+
       // 1. Escrow İşlemi Oluştur (Ödeme Takibi İçin)
       const { error: escrowError } = await supabase
         .from('escrow_transactions')
@@ -39,6 +49,7 @@ const ReservationModal = ({ truck, origin, destination, userProfile, onClose, sh
           title: `Lojistik: ${truck.plate} (${origin} - ${destination}) - ${form.cargo}`,
           amount: truck.base_price,
           seller: truck.company,
+          buyer: userProfile?.company_name || 'Misafir Şirket',
           status: 0,
           type: 'logistics'
         }]);
@@ -50,7 +61,7 @@ const ReservationModal = ({ truck, origin, destination, userProfile, onClose, sh
       let currentManifests = [];
       try {
         currentManifests = typeof truck.manifests === 'string' ? JSON.parse(truck.manifests) : (truck.manifests || []);
-      } catch (e) { currentManifests = []; }
+      } catch { currentManifests = []; }
 
       const updatedManifests = [
         ...currentManifests,
@@ -66,6 +77,21 @@ const ReservationModal = ({ truck, origin, destination, userProfile, onClose, sh
         .eq('id', truck.id);
 
       if (updateError) throw updateError;
+      
+      // 3. CÜZDAN ENTEGRASYONU (Ödeme Başlatma)
+      // Bakiyeyi düş
+      await supabase.from('users').update({ 
+        total_savings: currentSavings - amountValue 
+      }).eq('id', user.id);
+      
+      // İşlem kaydı (Transactions tablosu)
+      await supabase.from('transactions').insert({
+        user_id: user.id,
+        type: 'Giden',
+        label: `Lojistik Ödemesi Başlatıldı: ${truck.plate}`,
+        amount: amountValue,
+        status: 'completed'
+      });
 
       await new Promise(r => setTimeout(r, 800));
       setLoading(false);

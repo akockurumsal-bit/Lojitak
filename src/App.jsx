@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   LayoutDashboard, ShoppingBag, Truck, ShieldCheck, 
   Menu, X, Bell, Search, ArrowUpRight, Leaf, 
-  TrendingUp, TrendingDown, Ship, ChevronRight, Package, Globe,
-  Wallet, ArrowRightLeft, CheckCircle2, Clock, CreditCard,
-  MapPin, FileText, Activity, Box, DollarSign, RefreshCw, Zap, Map, Navigation, Radar, Camera, Trash2
+  TrendingDown, ChevronRight, Globe, Star, Radar, Camera,
+  Wallet, ArrowRightLeft, CheckCircle2, Clock, CreditCard, MapPin, Package,
+  Activity, Box, DollarSign, RefreshCw, Zap, Navigation, Trash2
 } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -14,36 +14,20 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './supabase';
 import LogisticsScreen from './pages/LogisticsScreen';
 import EscrowScreen from './components/EscrowScreen';
-import LogoScene from './components/LogoScene';
 
 const IMGBB_API_KEY = '0b1eeb299a06bc1de5537afd171e7132';
 
 // --- Mock Data ---
-const CHART_DATA = [
-  { name: 'Ocak', tasarruf: 4000, karbon: 2400 },
-  { name: 'Şubat', tasarruf: 3000, karbon: 1398 },
-  { name: 'Mart', tasarruf: 2000, karbon: 9800 },
-  { name: 'Nisan', tasarruf: 2780, karbon: 3908 },
-  { name: 'Mayıs', tasarruf: 1890, karbon: 4800 },
-  { name: 'Haziran', tasarruf: 2390, karbon: 3800 },
-];
-
 const DEADSTOCK_ITEMS = [
-  { name: '2 Ton Plastik Granül', quantity: '2000 kg', location: 'Bursa OSB', value: '₺85.000', category: 'Hammadde', image: 'https://images.unsplash.com/photo-1542382257-80dedb725088?auto=format&fit=crop&q=80&w=400' },
-  { name: '500 Metre Denim Kumaş', quantity: '500 m', location: 'Denizli', value: '₺42.000', category: 'Tekstil', image: 'https://images.unsplash.com/photo-1554189097-ffe88e998a2b?auto=format&fit=crop&q=80&w=400' },
-  { name: '800 Adet Ahşap Palet', quantity: '800 Adet', location: 'İzmit', value: '₺12.500', category: 'Lojistik', image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&q=80&w=400' },
-  { name: '150 Litre Boya İnceltici', quantity: '150 L', location: 'Kocaeli', value: '₺18.000', category: 'Kimya', image: 'https://images.unsplash.com/photo-1574044536246-0486b48a7419?auto=format&fit=crop&q=80&w=400' },
-];
-
-const LOGISTICS_PROCESSES = [
-  { id: 'LOJ-001', route: 'İstanbul -> İzmir', status: 'In Transit', efficiency: '%85', date: '02.05.2024' },
-  { id: 'LOJ-002', route: 'Ankara -> Gaziantep', status: 'Consolidating', efficiency: '%92', date: '03.05.2024' },
-  { id: 'LOJ-003', route: 'Bursa -> Antalya', status: 'Dispatched', efficiency: '%78', date: '01.05.2024' },
+  { name: '2 Ton Plastik Granül', quantity: '2000 kg', location: 'Bursa OSB', value: '85000', category: 'Hammadde', image: 'https://images.unsplash.com/photo-1542382257-80dedb725088?auto=format&fit=crop&q=80&w=400' },
+  { name: '500 Metre Denim Kumaş', quantity: '500 m', location: 'Denizli', value: '42000', category: 'Tekstil', image: 'https://images.unsplash.com/photo-1554189097-ffe88e998a2b?auto=format&fit=crop&q=80&w=400' },
+  { name: '800 Adet Ahşap Palet', quantity: '800 Adet', location: 'İzmit', value: '12500', category: 'Lojistik', image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&q=80&w=400' },
+  { name: '150 Litre Boya İnceltici', quantity: '150 L', location: 'Kocaeli', value: '18000', category: 'Kimya', image: 'https://images.unsplash.com/photo-1574044536246-0486b48a7419?auto=format&fit=crop&q=80&w=400' },
 ];
 
 // --- Components ---
 
-const Sidebar = ({ activeScreen, setScreen, isOpen, toggle, user, userProfile, onSignOut, logoPreview }) => {
+const Sidebar = ({ activeScreen, setScreen, isOpen, toggle, userProfile, logoPreview }) => {
   const menuItems = [
     { id: 'OVERVIEW', label: 'Genel Bakış', icon: LayoutDashboard },
     { id: 'MARKETPLACE', label: 'Stok Pazarı', icon: ShoppingBag },
@@ -135,34 +119,28 @@ const Sidebar = ({ activeScreen, setScreen, isOpen, toggle, user, userProfile, o
   );
 };
 
-const Header = ({ title, toggleSidebar, user, setScreen, onOfferClick, showToast }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  
-  const searchKeywords = [
-    { key: 'lojistik', label: 'Akıllı Lojistik', screen: 'LOGISTICS' },
-    { key: 'nakliye', label: 'Akıllı Lojistik', screen: 'LOGISTICS' },
-    { key: 'rota', label: 'Akıllı Lojistik', screen: 'LOGISTICS' },
-    { key: 'pazar', label: 'Stok Pazarı', screen: 'MARKETPLACE' },
-    { key: 'stok', label: 'Stok Pazarı', screen: 'MARKETPLACE' },
-    { key: 'ilan', label: 'Stok Pazarı', screen: 'MARKETPLACE' },
-    { key: 'cüzdan', label: 'Hesabım & Cüzdan', screen: 'PROFILE' },
-    { key: 'bakiye', label: 'Hesabım & Cüzdan', screen: 'PROFILE' },
-    { key: 'profil', label: 'Hesabım & Cüzdan', screen: 'PROFILE' },
-    { key: 'genel', label: 'Genel Bakış', screen: 'OVERVIEW' },
-    { key: 'ana', label: 'Genel Bakış', screen: 'OVERVIEW' },
-  ];
+const SEARCH_KEYWORDS = [
+  { key: 'lojistik', label: 'Akıllı Lojistik', screen: 'LOGISTICS' },
+  { key: 'nakliye', label: 'Akıllı Lojistik', screen: 'LOGISTICS' },
+  { key: 'rota', label: 'Akıllı Lojistik', screen: 'LOGISTICS' },
+  { key: 'pazar', label: 'Stok Pazarı', screen: 'MARKETPLACE' },
+  { key: 'stok', label: 'Stok Pazarı', screen: 'MARKETPLACE' },
+  { key: 'ilan', label: 'Stok Pazarı', screen: 'MARKETPLACE' },
+  { key: 'cüzdan', label: 'Hesabım & Cüzdan', screen: 'PROFILE' },
+  { key: 'bakiye', label: 'Hesabım & Cüzdan', screen: 'PROFILE' },
+  { key: 'profil', label: 'Hesabım & Cüzdan', screen: 'PROFILE' },
+  { key: 'genel', label: 'Genel Bakış', screen: 'OVERVIEW' },
+  { key: 'ana', label: 'Genel Bakış', screen: 'OVERVIEW' },
+];
 
-  useEffect(() => {
-    if (searchQuery.length > 1) {
-      const filtered = searchKeywords.filter(item => 
-        item.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.label.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setSearchResults(filtered);
-    } else {
-      setSearchResults([]);
-    }
+const Header = ({ title, toggleSidebar, user, setScreen, onOfferClick }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchResults = useMemo(() => {
+    if (searchQuery.length <= 1) return [];
+    return SEARCH_KEYWORDS.filter(item => 
+      item.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.label.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   }, [searchQuery]);
   const [notifications, setNotifications] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
@@ -256,7 +234,6 @@ const Header = ({ title, toggleSidebar, user, setScreen, onOfferClick, showToast
                     onClick={() => {
                       setScreen(result.screen);
                       setSearchQuery('');
-                      setSearchResults([]);
                     }}
                     className="w-full text-left p-3 hover:bg-teal-500/10 rounded-xl flex items-center gap-3 transition-all group"
                   >
@@ -352,45 +329,11 @@ const NetworkBackground = () => (
   </div>
 );
 
-const LogisticsLivePanel = () => null;
 
 // --- Screen Views ---
 
-const OverviewScreen = ({ setScreen }) => {
-  const stats = [
-    { 
-      label: 'Kurtarılan Ölü Sermaye', 
-      value: '₺1.240.000', 
-      sub: 'Bu ay +₺320.000 kazanç', 
-      change: '+12%', 
-      icon: DollarSign, 
-      color: 'text-teal-400', 
-      bg: 'bg-teal-500/10',
-      sparkData: [30, 45, 35, 60, 50, 75, 70]
-    },
-    { 
-      label: 'Lojistik Tasarrufu', 
-      value: '%62.4', 
-      sub: 'Geçen aya göre %4 daha iyi', 
-      change: '-4.2%', 
-      icon: TrendingDown, 
-      color: 'text-amber-500', 
-      bg: 'bg-amber-500/10',
-      sparkData: [70, 60, 65, 40, 50, 30, 25]
-    },
-    { 
-      label: 'Önlenen CO2 Salınımı', 
-      value: '14.2 Ton', 
-      sub: 'Doğaya katkınız artıyor', 
-      change: '+2.1 Ton', 
-      icon: Leaf, 
-      color: 'text-green-400', 
-      bg: 'bg-green-500/10',
-      sparkData: [20, 30, 40, 55, 60, 80, 95]
-    },
-  ];
+const OverviewScreen = ({ setScreen, setIsAnalysisModalOpen }) => {
 
-  const [activeMetric, setActiveMetric] = useState('Kazanç');
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
@@ -551,8 +494,8 @@ const OverviewScreen = ({ setScreen }) => {
                 <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Haftalık Performans</h4>
                 <div className="w-2 h-2 rounded-full bg-green-500"></div>
              </div>
-             <div className="h-24 w-full" style={{ minWidth: '300px', width: '100%' }}>
-                <ResponsiveContainer width="100%" height="100%" aspect={4}>
+             <div className="h-24 w-full" style={{ minWidth: '0px', width: '100%' }}>
+                <ResponsiveContainer width="100%" height={100} minWidth={0} minHeight={0}>
                   <AreaChart data={[{v:10},{v:25},{v:15},{v:45},{v:30},{v:60},{v:40}]}>
                     <defs>
                       <linearGradient id="colorG" x1="0" y1="0" x2="0" y2="1">
@@ -574,7 +517,6 @@ const OverviewScreen = ({ setScreen }) => {
 
 const MarketplaceScreen = ({ user, userProfile, setSelectedOfferId, setScreen, showToast }) => {
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('MARKET'); // 'MARKET' or 'OFFERS'
   const [myOffers, setMyOffers] = useState([]);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -588,8 +530,7 @@ const MarketplaceScreen = ({ user, userProfile, setSelectedOfferId, setScreen, s
   const [isOffering, setIsOffering] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const fetchItems = async () => {
-    setLoading(true);
+  const fetchItems = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('market_items')
@@ -598,10 +539,9 @@ const MarketplaceScreen = ({ user, userProfile, setSelectedOfferId, setScreen, s
       
       if (!error) setItems(data || []);
     } catch (e) { console.error(e); }
-    setLoading(false);
-  };
+  }, []);
 
-  const fetchOffers = async () => {
+  const fetchOffers = useCallback(async () => {
     if (!user) return;
     try {
       const { data: sentOffers } = await supabase
@@ -625,11 +565,14 @@ const MarketplaceScreen = ({ user, userProfile, setSelectedOfferId, setScreen, s
       }
       setMyOffers([...(sentOffers || []), ...incomingOffers].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
     } catch (e) { console.error(e); }
-  };
+  }, [user]);
 
   useEffect(() => {
-    fetchItems();
-    fetchOffers();
+    const sync = async () => {
+      await fetchItems();
+      await fetchOffers();
+    };
+    sync();
     window.refreshOffers = fetchOffers;
 
     const marketSub = supabase.channel('market_realtime')
@@ -644,7 +587,7 @@ const MarketplaceScreen = ({ user, userProfile, setSelectedOfferId, setScreen, s
       supabase.removeChannel(marketSub);
       supabase.removeChannel(offerSub);
     };
-  }, [user]);
+  }, [user, fetchItems, fetchOffers]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -1056,7 +999,7 @@ const MarketplaceScreen = ({ user, userProfile, setSelectedOfferId, setScreen, s
   );
 };
 
-const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPreview, showToast }) => {
+const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPreview, showToast, fetchProfile }) => {
   const [activeTab, setActiveTab] = useState('WALLET');
   const fileInputRef = React.useRef(null);
   
@@ -1067,10 +1010,8 @@ const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPrevi
   ];
 
   const [transactions, setTransactions] = useState([]);
-  const [loadingTransactions, setLoadingTransactions] = useState(true);
 
-  const fetchTransactions = async () => {
-    setLoadingTransactions(true);
+  const fetchTransactions = useCallback(async () => {
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
@@ -1079,28 +1020,28 @@ const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPrevi
       .limit(5);
     
     if (!error) setTransactions(data || []);
-    setLoadingTransactions(false);
-  };
+  }, [user.id]);
 
   useEffect(() => {
-    fetchTransactions();
+    const sync = async () => {
+      await fetchTransactions();
+    };
+    sync();
     const sub = supabase.channel('wallet_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, fetchTransactions)
       .subscribe();
     return () => supabase.removeChannel(sub);
-  }, [user.id]);
+  }, [user.id, fetchTransactions]);
 
   // Withdrawal States
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [withdrawStep, setWithdrawStep] = useState(1);
   const [cardData, setCardData] = useState({ number: '', name: '', expiry: '', cvc: '', amount: '' });
-  const [isProcessing, setIsProcessing] = useState(false);
 
   // Deposit States
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [depositStep, setWithdrawStepDeposit] = useState(1);
   const [depositCardData, setDepositCardData] = useState({ number: '', name: '', expiry: '', cvc: '', amount: '' });
-  const [isDepositProcessing, setIsDepositProcessing] = useState(false);
 
   const formatCardNumber = (value) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
@@ -1129,13 +1070,12 @@ const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPrevi
       return;
     }
 
-    setIsProcessing(true);
     setWithdrawStep(2);
 
     try {
       await new Promise(resolve => setTimeout(resolve, 2500));
 
-      const { data: card, error: cardError } = await supabase.from('payment_methods').insert({
+      const { error: cardError } = await supabase.from('payment_methods').insert({
         user_id: user.id,
         card_holder_name: cardData.name,
         last_four: cardData.number.slice(-4),
@@ -1166,14 +1106,11 @@ const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPrevi
       console.error(err);
       showToast("İşlem başarısız: " + err.message, "error");
       setWithdrawStep(1);
-    } finally {
-      setIsProcessing(false);
     }
   };
 
   const handleDeposit = async (e) => {
     e.preventDefault();
-    setIsDepositProcessing(true);
     setWithdrawStepDeposit(2);
     try {
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1196,11 +1133,9 @@ const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPrevi
       showToast("₺" + depositCardData.amount + " başarıyla yüklendi.", "success");
       if (fetchProfile) fetchProfile(user.id); // Update UI
       setWithdrawStepDeposit(3);
-    } catch (err) {
+    } catch {
       showToast("Yükleme başarısız.", "error");
       setWithdrawStepDeposit(1);
-    } finally {
-      setIsDepositProcessing(false);
     }
   };
 
@@ -1394,7 +1329,7 @@ const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPrevi
           )}
 
               {activeTab === 'SECURITY' && (
-                <SecuritySection onSignOut={onSignOut} userProfile={userProfile} />
+                <SecuritySection onSignOut={onSignOut} userProfile={userProfile} showToast={showToast} />
               )}
         </div>
       </div>
@@ -1584,7 +1519,7 @@ const ProfileScreen = ({ user, userProfile, onSignOut, logoPreview, setLogoPrevi
   );
 };
 
-const SecuritySection = ({ onSignOut, userProfile }) => {
+const SecuritySection = ({ onSignOut, userProfile, showToast }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1924,35 +1859,7 @@ export default function App() {
     setToast({ message, type, id: Date.now() });
   };
 
-  useEffect(() => {
-    // Initial Session Check
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const currentUser = session?.user || null;
-      setUser(currentUser);
-      if (currentUser) {
-        fetchProfile(currentUser.id);
-      } else {
-        setUser(null);
-      }
-    };
-    checkSession();
-
-    // Supabase Auth Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user || null;
-      setUser(currentUser);
-      if (currentUser) {
-        fetchProfile(currentUser.id);
-      } else {
-        setUserProfile(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchProfile = async (uid) => {
+  const fetchProfile = useCallback(async (uid) => {
     let { data, error } = await supabase
       .from('users')
       .select('*')
@@ -1982,7 +1889,58 @@ export default function App() {
       setUserProfile(data);
       setLogoPreview(data.logo_url);
     }
-  };
+  }, [user?.email]);
+
+  useEffect(() => {
+    // Initial Session Check
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUser = session?.user || null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchProfile(currentUser.id);
+      } else {
+        setUser(null);
+      }
+    };
+    checkSession();
+
+    // Supabase Auth Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user || null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchProfile(currentUser.id);
+      } else {
+        setUserProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [fetchProfile]);
+
+  // --- REALTIME SUBSCRIPTION FOR AUTOMATIC BALANCE UPDATE ---
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channelName = `profile_updates_${user.id}`;
+    const profileSub = supabase.channel(channelName)
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'users', 
+        filter: `id=eq.${user.id}` 
+      }, payload => {
+        console.log("Realtime Profile Update:", payload.new);
+        setUserProfile(payload.new);
+        if (payload.new.logo_url) setLogoPreview(payload.new.logo_url);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(profileSub);
+    };
+  }, [user?.id]);
 
   const screenTitle = useMemo(() => {
     switch (activeScreen) {
@@ -2038,11 +1996,11 @@ export default function App() {
           <AnimatePresence mode="wait">
             <motion.div key={activeScreen} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.3 }}>
-              {activeScreen === 'OVERVIEW' && <OverviewScreen setScreen={setScreen} showToast={showToast} />}
+              {activeScreen === 'OVERVIEW' && <OverviewScreen setScreen={setScreen} showToast={showToast} setIsAnalysisModalOpen={setIsAnalysisModalOpen} />}
               {activeScreen === 'MARKETPLACE' && <MarketplaceScreen user={user} userProfile={userProfile} setSelectedOfferId={setSelectedOfferId} setScreen={setScreen} showToast={showToast} />}
-              {activeScreen === 'LOGISTICS' && <LogisticsScreen userProfile={userProfile} setScreen={setScreen} showToast={showToast} />}
+              {activeScreen === 'LOGISTICS' && <LogisticsScreen user={user} userProfile={userProfile} setScreen={setScreen} showToast={showToast} />}
               {activeScreen === 'ESCROW' && <EscrowScreen user={user} userProfile={userProfile} showToast={showToast} refreshProfile={() => fetchProfile(user.id)} />}
-              {activeScreen === 'PROFILE' && <ProfileScreen user={user} userProfile={userProfile} onSignOut={() => supabase.auth.signOut()} logoPreview={logoPreview} setLogoPreview={setLogoPreview} showToast={showToast} />}
+              {activeScreen === 'PROFILE' && <ProfileScreen user={user} userProfile={userProfile} onSignOut={() => supabase.auth.signOut()} logoPreview={logoPreview} setLogoPreview={setLogoPreview} showToast={showToast} fetchProfile={() => fetchProfile(user.id)} />}
             </motion.div>
           </AnimatePresence>
         </main>
@@ -2056,10 +2014,14 @@ export default function App() {
           userProfile={userProfile} 
           setScreen={setScreen}
           onClose={() => setSelectedOfferId(null)} 
+          showToast={showToast}
         />
       )}
       {isAnalysisModalOpen && (
         <AnalysisReportModal onClose={() => setIsAnalysisModalOpen(false)} />
+      )}
+      {toast && (
+        <Toast {...toast} onClose={() => setToast(null)} />
       )}
     </div>
   );
@@ -2067,7 +2029,7 @@ export default function App() {
 
 // --- Offer Detail & Chat Components ---
 
-const OfferDetailModal = ({ offerId, user, userProfile, onClose, setScreen }) => {
+const OfferDetailModal = ({ offerId, user, onClose, setScreen, showToast }) => {
   const [offer, setOffer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showChat, setShowChat] = useState(false);
@@ -2109,7 +2071,7 @@ const OfferDetailModal = ({ offerId, user, userProfile, onClose, setScreen }) =>
       }
     };
     fetchOffer();
-  }, [offerId]);
+  }, [offerId, onClose]);
 
   const [showLogisticsPrompt, setShowLogisticsPrompt] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
@@ -2267,7 +2229,13 @@ const OfferDetailModal = ({ offerId, user, userProfile, onClose, setScreen }) =>
 
         {showChat && (
           <div className="absolute inset-0 z-20">
-            <ChatWindow offerId={offerId} user={user} userProfile={userProfile} offer={offer} onClose={() => setShowChat(false)} />
+            <ChatWindow 
+              offerId={offerId} 
+              user={user} 
+              offer={offer} 
+              onClose={() => setShowChat(false)} 
+              showToast={showToast}
+            />
           </div>
         )}
       </motion.div>
@@ -2275,7 +2243,7 @@ const OfferDetailModal = ({ offerId, user, userProfile, onClose, setScreen }) =>
   );
 };
 
-const ChatWindow = ({ offerId, user, userProfile, offer, onClose }) => {
+const ChatWindow = ({ offerId, user, offer, onClose, showToast }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -2302,7 +2270,7 @@ const ChatWindow = ({ offerId, user, userProfile, offer, onClose }) => {
       ).subscribe();
 
     return () => supabase.removeChannel(sub);
-  }, [offerId]);
+  }, [offerId, onClose]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -2452,7 +2420,7 @@ const AnalysisReportModal = ({ onClose }) => {
             <div className="p-8 rounded-[2.5rem] bg-[#0B1E2D] border border-slate-800">
               <h4 className="text-sm font-black text-white uppercase tracking-widest mb-8">Verimlilik Trendi (%)</h4>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <AreaChart data={reportData}>
                     <defs>
                       <linearGradient id="colorEff" x1="0" y1="0" x2="0" y2="1">
@@ -2473,7 +2441,7 @@ const AnalysisReportModal = ({ onClose }) => {
             <div className="p-8 rounded-[2.5rem] bg-[#0B1E2D] border border-slate-800">
               <h4 className="text-sm font-black text-white uppercase tracking-widest mb-8">Lojistik Maliyet Analizi (₺)</h4>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <AreaChart data={reportData}>
                     <defs>
                       <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">

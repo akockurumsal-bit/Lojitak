@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Radar, Navigation, MapPin, Truck, ShieldCheck, Zap } from 'lucide-react';
+import { Radar, Truck, ShieldCheck, Zap } from 'lucide-react';
 
 const RadarMap = ({ trucks, selectedTruck, origin, destination }) => {
   // Koordinatlar (SVG ölçeğinde 0-1000)

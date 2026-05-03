@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldCheck, CheckCircle2, Clock, FileText, Plus, ArrowRight, Wallet, Package, CheckCircle, RefreshCw, X, History, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ShieldCheck, CheckCircle2, Clock, FileText, Plus, Wallet, Package, CheckCircle, RefreshCw, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabase';
 
@@ -16,21 +16,9 @@ const EscrowScreen = ({ user, userProfile, showToast, refreshProfile }) => {
     else alert(msg);
   };
 
-  useEffect(() => {
-    if (user) fetchTransactions();
-
-    // Realtime sub
-    const sub = supabase.channel('escrow_live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'escrow_transactions' }, () => {
-        fetchTransactions();
-      })
-      .subscribe();
-    return () => supabase.removeChannel(sub);
-  }, [user]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('escrow_transactions')
         .select('*')
         .or(`buyer.eq."${userProfile?.company_name || user.email}",seller.eq."${userProfile?.company_name || user.email}"`)
@@ -43,7 +31,22 @@ const EscrowScreen = ({ user, userProfile, showToast, refreshProfile }) => {
         if (firstActive && !selectedTx) setSelectedTx(firstActive);
       }
     } catch (e) { console.error(e); }
-  };
+  }, [user.email, userProfile, selectedTx]);
+
+  useEffect(() => {
+    const syncData = async () => {
+      if (user) await fetchTransactions();
+    };
+    syncData();
+
+    // Realtime sub
+    const sub = supabase.channel('escrow_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'escrow_transactions' }, () => {
+        fetchTransactions();
+      })
+      .subscribe();
+    return () => supabase.removeChannel(sub);
+  }, [user, fetchTransactions]);
 
   const handleCreateTx = async (e) => {
     e.preventDefault();
@@ -74,7 +77,7 @@ const EscrowScreen = ({ user, userProfile, showToast, refreshProfile }) => {
         setNewTx({ title: '', amount: '', seller: '' });
         notify('Güvenli ödeme işlemi başarıyla başlatıldı!', 'success');
       }
-    } catch (err) { 
+    } catch { 
       notify('Bağlantı hatası oluştu!', 'error');
     }
     setLoading(false);
@@ -103,6 +106,9 @@ const EscrowScreen = ({ user, userProfile, showToast, refreshProfile }) => {
           const currentSavings = userProfile?.total_savings || 0;
           if (currentSavings < amountValue) {
             notify('Yetersiz bakiye! İşlem başlatılamadı.', 'error');
+            // Statusu geri çek
+            await supabase.from('escrow_transactions').update({ status: -1 }).eq('id', selectedTx.id);
+            setLoading(false);
             return;
           }
 
@@ -113,7 +119,7 @@ const EscrowScreen = ({ user, userProfile, showToast, refreshProfile }) => {
           await supabase.from('transactions').insert({
             user_id: user.id,
             type: 'Giden',
-            label: `Escrow Ödemesi Başlatıldı: ${selectedTx.title}`,
+            label: `Güvenli Ödeme Başlatıldı: ${selectedTx.title}`,
             amount: amountValue,
             status: 'completed'
           });

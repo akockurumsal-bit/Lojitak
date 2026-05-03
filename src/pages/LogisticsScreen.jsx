@@ -1,16 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-  Truck, Search, MapPin, Clock, Globe, TrendingUp,
-  ShieldCheck, RefreshCw, Navigation, User, Hash,
-  Gauge, Package, Star, ArrowRight, CheckCircle2,
-  Fuel, AlertTriangle, PhoneCall, CreditCard, Zap,
-  Building2, Users, Radar, Leaf
+  Truck, Search, Clock,
+  RefreshCw, User, Hash,
+  Package, Star, ArrowRight,
+  Fuel, PhoneCall, CreditCard, Zap,
+  Building2, Users, Leaf
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TURKIYE_ILLER } from '../data/mockData';
 import ReservationModal from '../components/ReservationModal';
 import { supabase } from '../supabase';
-import RadarMap from '../components/RadarMap';
 
 // --- Sabit Veri Havuzu ---
 const TRUCK_BRANDS = [
@@ -157,7 +156,7 @@ function TruckDetailPanel({ truck, origin, destination, setReserveTruck }) {
 }
 
 // --- Ana Bileşen ---
-const LogisticsScreen = ({ showToast, userProfile, setScreen }) => {
+const LogisticsScreen = ({ user, showToast, userProfile, setScreen }) => {
   const [trucks, setTrucks] = useState([]);
   const [origin, setOrigin] = useState('İstanbul');
   const [destination, setDestination] = useState('Ankara');
@@ -169,7 +168,7 @@ const LogisticsScreen = ({ showToast, userProfile, setScreen }) => {
   const toast = (msg, type) => showToast?.(msg, type);
 
   // --- Veritabanı Motoru ---
-  const fetchAndSyncTrucks = async (from, to, date) => {
+  const fetchAndSyncTrucks = useCallback(async (from, to, date) => {
     try {
       // 1. Önce mevcutları çek
       const { data: existing } = await supabase
@@ -203,9 +202,6 @@ const LogisticsScreen = ({ showToast, userProfile, setScreen }) => {
             arrival_time: eta.arrival,
             distance_km: eta.distance,
             travel_hours: eta.hours,
-            delay_hours: parseFloat((Math.random() * 2).toFixed(1)),
-            carbon_saving: Math.floor(Math.random() * 20) + 10,
-            eco_score: parseFloat((4.0 + Math.random() * 1.0).toFixed(1)),
             manifests: JSON.stringify([{ company: 'Lojitak AI', weight: 1200, cargo: 'Ön Yükleme' }])
           };
         });
@@ -231,23 +227,33 @@ const LogisticsScreen = ({ showToast, userProfile, setScreen }) => {
     } catch (e) {
       console.error('Lojistik Senkronizasyon Hatası:', e);
     }
-  };
+  }, [selectedTruck]);
 
   useEffect(() => {
-    fetchAndSyncTrucks(origin, destination, loadDate);
+    const syncInitialData = async () => {
+      await fetchAndSyncTrucks(origin, destination, loadDate);
+    };
+    syncInitialData();
 
     // Real-time dinleyici: Herhangi bir tır güncellenirse (rezervasyon vb.)
     const sub = supabase.channel('logistics_live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'active_trucks' }, (payload) => {
-        // Sadece mevcut rotayı ilgilendiriyorsa güncelle
-        if (payload.new && payload.new.origin === origin && payload.new.destination === destination) {
-          fetchAndSyncTrucks(origin, destination, loadDate);
+        if (payload.eventType === 'INSERT') {
+          if (payload.new.origin === origin && payload.new.destination === destination) {
+            setTrucks(prev => [...prev, payload.new]);
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          if (payload.new.origin === origin && payload.new.destination === destination) {
+            setTrucks(prev => prev.map(t => t.id === payload.new.id ? payload.new : t));
+          }
+        } else if (payload.eventType === 'DELETE') {
+          setTrucks(prev => prev.filter(t => t.id === payload.old.id));
         }
       })
       .subscribe();
 
     return () => supabase.removeChannel(sub);
-  }, [origin, destination, loadDate]);
+  }, [origin, destination, loadDate, fetchAndSyncTrucks]);
 
   const handleSearch = () => {
     setIsSearching(true);
@@ -350,7 +356,7 @@ const LogisticsScreen = ({ showToast, userProfile, setScreen }) => {
     </div>
 
     <AnimatePresence>
-      {reserveTruck && <ReservationModal truck={reserveTruck} origin={origin} destination={destination} userProfile={userProfile} showToast={showToast} setScreen={setScreen} onClose={() => setReserveTruck(null)} />}
+      {reserveTruck && <ReservationModal user={user} truck={reserveTruck} origin={origin} destination={destination} userProfile={userProfile} showToast={showToast} setScreen={setScreen} onClose={() => setReserveTruck(null)} />}
     </AnimatePresence>
     </>
   );
