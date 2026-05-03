@@ -22,7 +22,15 @@ function Model({ url }) {
 const LogoScene = () => {
   return (
     <div className="w-16 h-16 flex-shrink-0 -ml-2 -mt-2">
-      <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 4], fov: 40 }} gl={{ alpha: true }}>
+      <Canvas 
+        dpr={[1, 2]} 
+        camera={{ position: [0, 0, 4], fov: 40 }} 
+        gl={{ 
+          alpha: true, 
+          powerPreference: "low-power",
+          antialias: false 
+        }}
+      >
         <Suspense fallback={null}>
           <Float speed={3} rotationIntensity={0.6} floatIntensity={0.6}>
             <Stage environment="city" intensity={0.6} contactShadow={false} adjustCamera={false}>

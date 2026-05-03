@@ -1,144 +1,233 @@
-import React, { Suspense, useEffect, useMemo, memo } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, useGLTF, Float, ContactShadows, Html, Box } from '@react-three/drei';
+import React, { useRef, useMemo, useEffect } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, Float } from '@react-three/drei';
 import * as THREE from 'three';
 
-const CargoBoxes = memo(({ cargoPool }) => {
+// --- WebGL Temizliği ---
+function SceneCleanup() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    return () => { try { gl.dispose(); scene.clear(); } catch(e){} };
+  }, [gl, scene]);
+  return null;
+}
+
+// --- Holografik Malzeme Renkleri ---
+const HOLO_COLOR = '#00D4FF';
+const HOLO_EMISSIVE = '#00A8CC';
+const BOX_FILLED_COLOR = '#1E3A5F';
+const BOX_USER_COLOR = '#00F0FF';
+
+// --- Tek Kargo Kutusu ---
+function CargoBox({ position, color, delay = 0, scale = 1 }) {
+  const meshRef = useRef();
+  useFrame((state) => {
+    if (meshRef.current) {
+      meshRef.current.position.y = position[1] + Math.sin(state.clock.getElapsedTime() * 0.8 + delay) * 0.015;
+    }
+  });
+  return (
+    <mesh ref={meshRef} position={position} scale={scale}>
+      <boxGeometry args={[0.26, 0.26, 0.30]} />
+      <meshStandardMaterial
+        color={color}
+        emissive={color}
+        emissiveIntensity={color === BOX_USER_COLOR ? 1.2 : 0.4}
+        transparent
+        opacity={color === BOX_USER_COLOR ? 0.95 : 0.75}
+        roughness={0.2}
+        metalness={0.9}
+      />
+    </mesh>
+  );
+}
+
+// --- Holografik Tır Doresi (Prosedürel) ---
+function TruckBody() {
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({
+    color: HOLO_COLOR,
+    emissive: HOLO_EMISSIVE,
+    emissiveIntensity: 0.4,
+    transparent: true,
+    opacity: 0.12,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    wireframe: false,
+  }), []);
+
+  const edgeMat = useMemo(() => new THREE.LineBasicMaterial({
+    color: HOLO_COLOR,
+    transparent: true,
+    opacity: 0.7,
+  }), []);
+
+  // Dorse boyutları
+  const W = 1.1, H = 1.0, D = 3.2;
+
+  const boxGeo = useMemo(() => new THREE.BoxGeometry(W, H, D), []);
+  const edgesGeo = useMemo(() => new THREE.EdgesGeometry(boxGeo), [boxGeo]);
+
+  // Kabin boyutları
+  const CW = 1.0, CH = 0.85, CD = 0.8;
+  const cabinGeo = useMemo(() => new THREE.BoxGeometry(CW, CH, CD), []);
+  const cabinEdgesGeo = useMemo(() => new THREE.EdgesGeometry(cabinGeo), [cabinGeo]);
+
+  return (
+    <group>
+      {/* --- DORSE --- */}
+      <mesh geometry={boxGeo} material={mat} position={[0, 0, 0]} />
+      <lineSegments geometry={edgesGeo} material={edgeMat} position={[0, 0, 0]} />
+
+      {/* Dorse Çatı Detay */}
+      <lineSegments position={[0, H / 2, 0]}>
+        <edgesGeometry args={[new THREE.BoxGeometry(W - 0.05, 0.02, D - 0.05)]} />
+        <lineBasicMaterial color={HOLO_COLOR} transparent opacity={0.4} />
+      </lineSegments>
+
+      {/* --- KABİN --- */}
+      <mesh geometry={cabinGeo} material={mat} position={[0, -(H - CH) / 2, D / 2 + CD / 2]} />
+      <lineSegments geometry={cabinEdgesGeo} material={edgeMat} position={[0, -(H - CH) / 2, D / 2 + CD / 2]} />
+
+      {/* Kabin Ön Cam */}
+      <mesh position={[0, -(H - CH) / 2 + 0.1, D / 2 + CD + 0.01]}>
+        <planeGeometry args={[CW - 0.25, CH - 0.25]} />
+        <meshStandardMaterial color="#00F0FF" emissive="#00F0FF" emissiveIntensity={0.3} transparent opacity={0.15} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* --- TEKERLEKLER (4 Adet) --- */}
+      {[
+        [-W / 2 - 0.05, -H / 2 - 0.12, -D / 2 + 0.5],
+        [W / 2 + 0.05, -H / 2 - 0.12, -D / 2 + 0.5],
+        [-W / 2 - 0.05, -H / 2 - 0.12, D / 2 - 0.5],
+        [W / 2 + 0.05, -H / 2 - 0.12, D / 2 - 0.5],
+        [-W / 2 - 0.05, -H / 2 - 0.12, 0],
+        [W / 2 + 0.05, -H / 2 - 0.12, 0],
+      ].map((pos, i) => (
+        <mesh key={i} position={pos} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.15, 0.15, 0.12, 12]} />
+          <meshStandardMaterial color={HOLO_COLOR} emissive={HOLO_EMISSIVE} emissiveIntensity={0.3} transparent opacity={0.5} />
+        </mesh>
+      ))}
+
+      {/* Zemin Gölge Halkası */}
+      <mesh position={[0, -H / 2 - 0.28, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.3, 1.6, 32]} />
+        <meshBasicMaterial color={HOLO_COLOR} transparent opacity={0.05} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+// --- Kargo Kutuları Sistemi ---
+function CargoSystem({ cargoPool }) {
   const boxes = useMemo(() => {
-    const cols = 7; 
-    const rows = 3; 
-    const depth = 3; 
-    const totalBoxes = cols * rows * depth; 
+    const items = [];
+    const rows = 3, cols = 3, layers = 7;
+    const totalSlots = rows * cols * layers;
+    let currentSlot = 0;
 
-    let colorArray = [];
-    if (cargoPool && cargoPool.length > 0) {
-      cargoPool.forEach(item => {
-        const count = Math.floor((item.percentage / 100) * totalBoxes);
-        for (let i = 0; i < count; i++) colorArray.push(item.color);
-      });
-    }
+    const safePool = (cargoPool && cargoPool.length > 0)
+      ? cargoPool
+      : [{ percentage: 50, color: BOX_FILLED_COLOR }];
 
-    const boxArray = [];
-    const boxSize = 0.16;
-    const spacing = 0.17;
+    safePool.forEach(cargo => {
+      if (!cargo || cargo.percentage <= 0) return;
+      const count = Math.max(1, Math.floor((cargo.percentage / 100) * totalSlots));
 
-    let count = 0;
-    for (let x = 0; x < cols; x++) {
-      for (let y = 0; y < rows; y++) {
-        for (let z = 0; z < depth; z++) {
-          if (count >= colorArray.length) break;
-          const px = x * spacing;
-          const py = y * spacing + (boxSize / 2);
-          const pz = (z - (depth - 1) / 2) * spacing;
+      for (let i = 0; i < count && currentSlot < totalSlots; i++) {
+        const layer = Math.floor(currentSlot / (rows * cols));
+        const row = Math.floor((currentSlot % (rows * cols)) / cols);
+        const col = currentSlot % cols;
 
-          boxArray.push(
-            <Box key={count} args={[boxSize, boxSize, boxSize]} position={[px, py, pz]}>
-              <meshStandardMaterial
-                color={colorArray[count]}
-                emissive={colorArray[count]}
-                emissiveIntensity={1.2}
-                transparent
-                opacity={0.8}
-              />
-            </Box>
-          );
-          count++;
-        }
+        items.push({
+          position: [
+            (col - 1) * 0.30,
+            (row * 0.30) - 0.36,
+            (layer * 0.33) - 1.1,
+          ],
+          color: cargo.color || BOX_FILLED_COLOR,
+          delay: (currentSlot * 0.3) % (Math.PI * 2),
+        });
+        currentSlot++;
       }
-    }
-    return boxArray;
+    });
+    return items;
   }, [cargoPool]);
 
-  return <group position={[-0.35, -0.2, 0]}>{boxes}</group>;
-});
-
-const TruckModel = memo(({ cargoPool = [] }) => {
-  const { scene } = useGLTF('/Meshy_AI_Blue_Semi_Truck_on_th_0502095613_texture.glb', true);
-
-  useEffect(() => {
-    if (scene) {
-      scene.traverse((child) => {
-        if (child.isMesh) {
-          const oldMat = child.material;
-          child.material = new THREE.MeshStandardMaterial({
-            color: new THREE.Color('#001020'),
-            emissive: new THREE.Color('#00F0FF'),
-            emissiveIntensity: 0.6,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.1,
-            depthWrite: false,
-            side: THREE.DoubleSide
-          });
-          if (oldMat) oldMat.dispose();
-        }
-      });
-    }
-    return () => {
-      if (scene) {
-        scene.traverse((child) => {
-          if (child.isMesh) child.material.dispose();
-        });
-      }
-    };
-  }, [scene]);
-
-  if (!scene) return null;
-
   return (
-    <Float speed={1.5} rotationIntensity={0.1} floatIntensity={0.3}>
-      <group position={[0, -1, 0]} scale={1.5}>
-        <primitive object={scene} />
-        <CargoBoxes cargoPool={cargoPool} />
-      </group>
-    </Float>
+    <group>
+      {boxes.map((b, i) => (
+        <CargoBox key={i} position={b.position} color={b.color} delay={b.delay} />
+      ))}
+    </group>
   );
-});
+}
 
-const Loader = () => (
-  <Html center>
-    <div className="flex flex-col items-center justify-center pointer-events-none">
-      <div className="w-12 h-12 border-4 border-neon-blue border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(0,240,255,0.4)]"></div>
-      <div className="mt-4 text-neon-blue font-mono text-[10px] tracking-[0.3em] uppercase animate-pulse">ANALİZ EDİLİYOR</div>
-    </div>
-  </Html>
-);
-
-const TruckScene = memo(({ cargoPool = [] }) => {
+// --- Izgara Zemini ---
+function GridFloor() {
   return (
-    <div className="w-full h-full min-h-[350px] relative z-10">
-      <Canvas 
-        camera={{ position: [5, 3, 7], fov: 45 }}
-        gl={{ 
-          antialias: true, 
-          powerPreference: "high-performance",
-          alpha: true 
-        }}
-        dpr={[1, 2]} // Performance optimization for high-res screens
-      >
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[10, 10, 5]} intensity={0.8} />
-        <pointLight position={[-5, -2, -5]} intensity={20} color="#FF5F1F" />
-        <pointLight position={[5, 5, 5]} intensity={30} color="#00F0FF" />
+    <gridHelper args={[10, 20, HOLO_COLOR, '#0A2A3A']} position={[0, -0.85, 0]}>
+      <lineBasicMaterial color={HOLO_COLOR} transparent opacity={0.12} />
+    </gridHelper>
+  );
+}
 
-        <Suspense fallback={<Loader />}>
-          <TruckModel cargoPool={cargoPool} />
-          <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={10} blur={2} far={4} color="#00F0FF" />
-        </Suspense>
+// --- Ana Sahne ---
+function TruckScene3D({ cargoPool }) {
+  const groupRef = useRef();
+  useFrame((state) => {
+    if (groupRef.current) {
+      groupRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 0.15) * 0.3 - 0.5;
+    }
+  });
+
+  return (
+    <group ref={groupRef}>
+      <TruckBody />
+      <CargoSystem cargoPool={cargoPool} />
+    </group>
+  );
+}
+
+// --- Export ---
+export default function TruckScene({ cargoPool = [] }) {
+  return (
+    <div style={{ width: '100%', height: '100%', minHeight: '400px', background: 'transparent' }}>
+      <Canvas
+        dpr={[1, 1.5]}
+        gl={{
+          antialias: true,
+          alpha: true,
+          powerPreference: 'default',
+          preserveDrawingBuffer: false,
+        }}
+        onCreated={({ gl }) => {
+          gl.setClearColor(0x000000, 0);
+        }}
+      >
+        <PerspectiveCamera makeDefault position={[4.5, 2.5, 6]} fov={38} />
+        <SceneCleanup />
+
+        {/* Aydınlatma */}
+        <ambientLight intensity={0.5} />
+        <pointLight position={[5, 8, 5]} intensity={2} color="#00D4FF" />
+        <pointLight position={[-5, 3, -3]} intensity={1.5} color="#0066FF" />
+        <pointLight position={[0, -2, 0]} intensity={0.5} color="#00F0FF" />
+
+        <GridFloor />
+
+        <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
+          <TruckScene3D cargoPool={cargoPool} />
+        </Float>
 
         <OrbitControls
           enableZoom={false}
           enablePan={false}
-          minPolarAngle={Math.PI / 3}
-          maxPolarAngle={Math.PI / 2}
-          autoRotate
-          autoRotateSpeed={1}
+          minPolarAngle={Math.PI / 4}
+          maxPolarAngle={Math.PI / 2.2}
+          autoRotate={false}
         />
       </Canvas>
     </div>
   );
-});
-
-export default TruckScene;
-
-useGLTF.preload('/Meshy_AI_Blue_Semi_Truck_on_th_0502095613_texture.glb');
+}

@@ -14,7 +14,6 @@
     "@react-three/fiber": "^9.6.1",
     "@supabase/supabase-js": "^2.105.1",
     "clsx": "^2.1.1",
-    "firebase": "^12.12.1",
     "lucide-react": "^1.14.0",
     "motion": "^12.38.0",
     "react": "^19.2.5",
